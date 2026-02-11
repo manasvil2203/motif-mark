@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
 import argparse
+import os
+import cairo
+
 
 #Creating my varuables using Argparse
 def get_args():
@@ -27,6 +30,7 @@ class Segment:
 
     def length(self) -> int:
         return self.end - self.start # returns how long the segment is
+
 
 class SequenceRecord:
     """ Represents one FATSA record with exon/intron segments"""
@@ -117,3 +121,57 @@ def read_motifs(path: str) -> list[str]:
             motifs.append(line)
 
     return motifs
+
+
+
+IUPAC = {
+    "A": {"A"},
+    "C": {"C"},
+    "G": {"G"},
+    "T": {"T"},
+    "U": {"T"},  # treat U as T
+    "Y": {"C", "T"},
+}
+
+def chars_compatible(m_char: str, s_char: str) -> bool:
+    """
+    Return True if motif character and sequence character are compatible
+    under IUPAC ambiguity rules.
+    """
+    m_char = m_char.upper()
+    s_char = s_char.upper()
+
+    if m_char not in IUPAC or s_char not in IUPAC:
+        return False
+
+    return len(IUPAC[m_char].intersection(IUPAC[s_char])) > 0
+
+
+def find_motif_positions(record: SequenceRecord, motif: str) -> list[tuple[int, int]]:
+    """
+    Find all positions where a motif matches a sequence.
+    Returns a list of (start, end) tuples (0-based, end-exclusive).
+    """
+    seq = record.seq.upper()
+    motif = motif.upper()
+
+    positions = []
+    k = len(motif)
+
+    # slide motif along the sequence
+    for i in range(0, len(seq) - k + 1):
+
+        match = True
+
+        # compare motif to sequence at this position
+        for j in range(k):
+            if not chars_compatible(motif[j], seq[i + j]):
+                match = False
+                break
+
+        if match:
+            positions.append((i, i + k))
+        
+    return positions
+
+

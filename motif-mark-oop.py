@@ -1,23 +1,28 @@
 #!/usr/bin/env python
 
+# Import argparse for command line arguments
 import argparse
+
+# Import os to handle file name splitting
 import os
+
+# Import cairo for drawing
 import cairo
 
 
-#Creating my varuables using Argparse
+# Define a function to collect command line arguments
 def get_args():
-    parser = argparse.ArgumentParser(description= "Visualize sequence motifs on genomic regions using pycairo")
-    parser.add_argument("-f", "--fasta", help="Input fasta containing sequences", required=True)
-    parser.add_argument("-m", "--motifs", help="Input text file containing motifs (one per line)", required=True)    
 
-    return parser.parse_args()  
+    # Create an ArgumentParser object
+    parser = argparse.ArgumentParser(description="Visualize sequence motifs on genomic regions using pycairo")
+    # Add FASTA file argument
+    parser.add_argument(    "-f",   "--fasta", help="Input fasta containing sequences", required=True)
+    # Add motifs file argument
+    parser.add_argument("-m", "--motifs",help="Input text file containing motifs (one per line)",required=True)
 
-args = get_args()
+    # Parse and return the arguments
+    return parser.parse_args()
 
-#Making my variable global
-f: str = args.fasta
-m: str = args.motifs
 
 # Create a class to represent a continuous exon or intron segment
 class Segment:
@@ -105,6 +110,32 @@ class SequenceRecord:
 
         # Store that final segment too
         self.segments.append(final_seg)
+
+
+# New class: one motif match at one location in one gene
+class MotifHit:
+    """Represents one motif match on one gene (start/end) with a color."""
+
+    # Constructor to store motif match information
+    def __init__(self, motif, start, end, color):
+
+        # Store the motif string (example: "YGCY")
+        self.motif = motif
+
+        # Store match start (0-based)
+        self.start = start
+
+        # Store match end (end-exclusive)
+        self.end = end
+
+        # Store motif color (RGB tuple)
+        self.color = color
+
+    # Convenience function to get length of motif hit
+    def length(self):
+
+        # Return end minus start
+        return self.end - self.start
 
 
 # Function to read a FASTA file and return SequenceRecord objects
@@ -235,7 +266,8 @@ def chars_compatible(m_char, s_char):
 
 
 # Function to find motif matches in a SequenceRecord
-def find_motif_positions(record, motif):
+# This now returns a list of MotifHit objects (NOT tuples)
+def find_motif_hits(record, motif, color):
 
     # Convert full sequence to uppercase
     seq = record.seq.upper()
@@ -243,8 +275,8 @@ def find_motif_positions(record, motif):
     # Convert motif to uppercase
     motif = motif.upper()
 
-    # Make empty list for hits
-    positions = []
+    # Make empty list for hit objects
+    hits = []
 
     # Motif length
     k = len(motif)
@@ -268,10 +300,21 @@ def find_motif_positions(record, motif):
 
         # If still match is True, store this hit
         if match is True:
-            positions.append((i, i + k))
 
-    # Return list of hit coordinates
-    return positions
+            # Compute start coordinate
+            start = i
+
+            # Compute end coordinate
+            end = i + k
+
+            # Create a MotifHit object
+            hit = MotifHit(motif, start, end, color)
+
+            # Append hit to list
+            hits.append(hit)
+
+    # Return list of MotifHit objects
+    return hits
 
 
 # Convert FASTA filename to PNG name
@@ -321,7 +364,7 @@ def draw_gene_bases(records, motifs, out_png):
     label_space = 30
 
     # Motif transparency
-    motif_alpha = 0.70
+    motif_alpha = 0.90
 
     # Lane bar height
     lane_height = 6
@@ -397,11 +440,11 @@ def draw_gene_bases(records, motifs, out_png):
         # Increment
         i += 1
 
-    # Define helper to assign bars to lanes
-    def assign_lanes(bars):
+    # Define helper to assign hits to lanes so overlaps don't share a lane
+    def assign_lanes(hits):
 
-        # Sort bars by start then end
-        bars_sorted = sorted(bars, key=lambda t: (t[0], t[1]))
+        # Sort hits by start then end
+        hits_sorted = sorted(hits, key=lambda h: (h.start, h.end))
 
         # Store lanes
         lanes = []
@@ -409,13 +452,8 @@ def draw_gene_bases(records, motifs, out_png):
         # Store last end for each lane
         lane_last_end = []
 
-        # Loop over bars
-        for bar in bars_sorted:
-
-            # Unpack bar
-            start = bar[0]
-            end = bar[1]
-            color = bar[2]
+        # Loop over hits
+        for hit in hits_sorted:
 
             # Track if placed
             placed = False
@@ -425,13 +463,13 @@ def draw_gene_bases(records, motifs, out_png):
             while lane_index < len(lanes):
 
                 # If it doesn't overlap the last one in this lane
-                if start >= lane_last_end[lane_index]:
+                if hit.start >= lane_last_end[lane_index]:
 
                     # Add to this lane
-                    lanes[lane_index].append((start, end, color))
+                    lanes[lane_index].append(hit)
 
                     # Update last end
-                    lane_last_end[lane_index] = end
+                    lane_last_end[lane_index] = hit.end
 
                     # Mark as placed
                     placed = True
@@ -444,8 +482,8 @@ def draw_gene_bases(records, motifs, out_png):
 
             # If not placed, create a new lane
             if placed is False:
-                lanes.append([(start, end, color)])
-                lane_last_end.append(end)
+                lanes.append([hit])
+                lane_last_end.append(hit.end)
 
         # Return lanes
         return lanes
@@ -453,41 +491,39 @@ def draw_gene_bases(records, motifs, out_png):
     # Precompute lanes for each gene
     per_gene_lanes = []
 
+    # Precompute main hits for each gene (so we don't recalc twice)
+    per_gene_hits = []
+
     # Loop over each record
     for rec in records:
 
-        # Store bars for this gene
-        bars = []
+        # Store all hits for this gene
+        all_hits = []
 
-        # Loop over each motif
+        # Loop over motifs
         for motif in motifs:
 
             # Uppercase motif
             motif_up = motif.upper()
 
-            # Get motif color
+            # Get color
             color = motif_to_color[motif_up]
 
-            # Find hits
-            hits = find_motif_positions(rec, motif_up)
+            # Find hits as MotifHit objects
+            hits = find_motif_hits(rec, motif_up, color)
 
-            # Loop over hits
-            for hit in hits:
+            # Append each hit into all_hits
+            for h in hits:
+                all_hits.append(h)
 
-                # Get start
-                start = hit[0]
-
-                # Get end
-                end = hit[1]
-
-                # Append bar
-                bars.append((start, end, color))
-
-        # Assign lanes for this gene
-        lanes = assign_lanes(bars)
+        # Assign lanes using hits list
+        lanes = assign_lanes(all_hits)
 
         # Store lanes
         per_gene_lanes.append(lanes)
+
+        # Store all hits for main drawing
+        per_gene_hits.append(all_hits)
 
     # Find maximum lanes across genes
     max_lanes = 0
@@ -586,24 +622,24 @@ def draw_gene_bases(records, motifs, out_png):
             cr.rectangle(x0, baseline_y - exon_height / 2, w, exon_height)
             cr.fill()
 
-        # Draw motifs on main track
+        # Draw motif hits on main track ON TOP of exons
         motif_y_main = baseline_y - motif_height / 2
 
-        for motif in motifs:
-            motif_up = motif.upper()
-            color = motif_to_color[motif_up]
-            hits = find_motif_positions(rec, motif_up)
+        # Grab precomputed hits
+        hits_for_gene = per_gene_hits[idx]
 
-            for start, end in hits:
-                x0 = x(start)
-                x1 = x(end)
-                w = x1 - x0
-                if w < 1:
-                    w = 1
+        # Draw each hit object
+        for hit in hits_for_gene:
 
-                cr.set_source_rgba(color[0], color[1], color[2], motif_alpha)
-                cr.rectangle(x0, motif_y_main, w, motif_height)
-                cr.fill()
+            x0 = x(hit.start)
+            x1 = x(hit.end)
+            w = x1 - x0
+            if w < 1:
+                w = 1
+
+            cr.set_source_rgba(hit.color[0], hit.color[1], hit.color[2], motif_alpha)
+            cr.rectangle(x0, motif_y_main, w, motif_height)
+            cr.fill()
 
         # Compute overlap strip start
         strip_y0 = baseline_y + half_feature + strip_top_gap
@@ -619,14 +655,15 @@ def draw_gene_bases(records, motifs, out_png):
 
             lane_y = strip_y0 + li * (lane_height + lane_gap)
 
-            for start, end, color in lane:
-                x0 = x(start)
-                x1 = x(end)
+            for hit in lane:
+
+                x0 = x(hit.start)
+                x1 = x(hit.end)
                 w = x1 - x0
                 if w < 1:
                     w = 1
 
-                cr.set_source_rgb(color[0], color[1], color[2])
+                cr.set_source_rgb(hit.color[0], hit.color[1], hit.color[2])
                 cr.rectangle(x0, lane_y, w, lane_height)
                 cr.fill()
 

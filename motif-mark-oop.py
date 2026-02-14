@@ -9,6 +9,9 @@ import os
 # Import cairo for drawing
 import cairo
 
+# Import regex for reg exp
+import re
+
 
 # Define a function to collect command line arguments
 def get_args():
@@ -113,7 +116,7 @@ class SequenceRecord:
 
 
 # New class: one motif match at one location in one gene
-class MotifHit:
+class MotifLocation:
     """Represents one motif match on one gene (start/end) with a color."""
 
     # Constructor to store motif match information
@@ -226,96 +229,72 @@ def read_motifs(path):
     return motifs
 
 
-# Dictionary for IUPAC ambiguity codes
-IUPAC = {
-    "A": ["A"],
-    "C": ["C"],
-    "G": ["G"],
-    "T": ["T"],
-    "U": ["T"],
-    "Y": ["C", "T"],
+# Map IUPAC codes to regex character classes
+IUPAC_REGEX = {
+    "A": "A",
+    "C": "C",
+    "G": "G",
+    "T": "T",
+    "U": "T",        # treat U as T
+    "Y": "[CT]",     # pyrimidine
 }
 
+# Convert a motif like "YGCY" into a regex like "[CT]GC[CT]"
+def motif_to_regex(motif):
 
-# Function to see if a motif character can match a sequence character
-def chars_compatible(m_char, s_char):
-
-    # Convert motif char to uppercase
-    m_char = m_char.upper()
-
-    # Convert sequence char to uppercase
-    s_char = s_char.upper()
-
-    # If motif char not in dictionary, fail
-    if m_char not in IUPAC:
-        return False
-
-    # If sequence char not in dictionary, fail
-    if s_char not in IUPAC:
-        return False
-
-    # Loop through all bases motif char could represent
-    for base in IUPAC[m_char]:
-
-        # If that base is also allowed by the sequence char, match is possible
-        if base in IUPAC[s_char]:
-            return True
-
-    # If none matched, return False
-    return False
-
-
-# Function to find motif matches in a SequenceRecord
-# This now returns a list of MotifHit objects (NOT tuples)
-def find_motif_hits(record, motif, color):
-
-    # Convert full sequence to uppercase
-    seq = record.seq.upper()
-
-    # Convert motif to uppercase
+    # Make motif uppercase
     motif = motif.upper()
 
-    # Make empty list for hit objects
+    # Start with empty regex pattern
+    pattern = ""
+
+    # Build regex one character at a time
+    for ch in motif:
+
+        # If the char is known, add its regex
+        if ch in IUPAC_REGEX:
+            pattern = pattern + IUPAC_REGEX[ch]
+
+        # If unknown, fail loudly (or you can return None)
+        else:
+            raise ValueError("Unsupported IUPAC code in motif: " + ch)
+
+    # Return finished regex pattern
+    return pattern
+
+
+# Find motif hits using regex lookahead so overlaps are included
+def find_motif_locations(record, motif, color):
+
+    # Make sequence uppercase
+    seq = record.seq.upper()
+
+    # Convert motif to regex
+    inner = motif_to_regex(motif)
+
+    # Use lookahead so overlapping matches are found
+    pattern = "(?=(" + inner + "))"
+
+    # Store hits
     hits = []
 
-    # Motif length
-    k = len(motif)
+    # Loop over every regex match
+    for match in re.finditer(pattern, seq):
 
-    # Loop over every possible start position
-    for i in range(0, len(seq) - k + 1):
+        # Start position is where lookahead begins
+        start = match.start()
 
-        # Assume match until proven otherwise
-        match = True
+        # End is start + motif length
+        end = start + len(motif)
 
-        # Compare each character of the motif
-        for j in range(0, k):
+        # Create MotifLocation object
+        hit_obj = MotifLocation(motif.upper(), start, end, color)
 
-            # Check if motif char and sequence char are compatible
-            ok = chars_compatible(motif[j], seq[i + j])
+        # Store it
+        hits.append(hit_obj)
 
-            # If not compatible, break
-            if ok is False:
-                match = False
-                break
-
-        # If still match is True, store this hit
-        if match is True:
-
-            # Compute start coordinate
-            start = i
-
-            # Compute end coordinate
-            end = i + k
-
-            # Create a MotifHit object
-            hit = MotifHit(motif, start, end, color)
-
-            # Append hit to list
-            hits.append(hit)
-
-    # Return list of MotifHit objects
+    # Return all hits
     return hits
-
 
 # Convert FASTA filename to PNG name
 def fasta_to_png_name(fasta_path):
@@ -510,7 +489,7 @@ def draw_gene_bases(records, motifs, out_png):
             color = motif_to_color[motif_up]
 
             # Find hits as MotifHit objects
-            hits = find_motif_hits(rec, motif_up, color)
+            hits = find_motif_locations(rec, motif_up, color)
 
             # Append each hit into all_hits
             for h in hits:

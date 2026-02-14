@@ -215,144 +215,219 @@ import cairo
 
 def draw_gene_bases(records: list[SequenceRecord], motifs: list[str], out_png: str) -> None:
     """
-    Draw a multi-track figure sized to the number of genes.
-    For each gene:
-      - draw label
-      - draw baseline (introns)
-      - draw exons as black boxes
-      - draw motif hits as colored boxes (all on the same line on baseline)
+    Draw genes with introns, exons, and motifs in one PNG.
+    Spacing is computed automatically per gene.
+    Motifs are semi-transparent so overlaps are visible.
     """
 
-    # 1) Layout constants (pixels)
-
+    # Set total image width in pixels
     width = 1400
+
+    # Space on the left for gene labels
     left_margin = 220
+
+    # Space on the right so lines don't touch edge
     right_margin = 40
+
+    # Padding at the top of the image
     top_margin = 50
+
+    # Padding at the bottom of the image
     bottom_margin = 40
 
-    track_gap = 200         # spacing between gene tracks
-    baseline_offset = 55    # baseline position within each track row
-
+    # Thickness of baseline line
     line_width = 2
+
+    # Height of exon rectangles
     exon_height = 60
 
-    motif_height = 60       # thickness of motif boxes
-    motif_y_gap = 0         # how far above the baseline motifs are drawn
+    # Height of motif rectangles
+    motif_height = 60
 
+    # Vertical padding above and below each gene
+    pad_y = 10
 
-    # Compute image height
+    # Space reserved for gene name text
+    label_space = 30
 
-    height = top_margin + len(records) * track_gap + bottom_margin
+    # Transparency for motifs (0 = invisible, 1 = solid)
+    motif_alpha = 0.60
 
+    # Stop if no records were given
+    if not records:
+        raise ValueError("No records to draw")
 
-    # Shared x-scale (bp -> pixels)
-
+    # Find longest gene in bases
     max_len = max(r.length for r in records)
+
+    # Compute horizontal drawing space
     usable_w = width - left_margin - right_margin
+
+    # Convert base pairs to pixels
     scale = usable_w / max_len
 
+    # Convert base position to x coordinate
     def x(bp: int) -> float:
         return left_margin + bp * scale
 
-    # Create surface/context
+    # Compute half exon height
+    half_exon = exon_height / 2
 
+    # Compute half motif height
+    half_motif = motif_height / 2
+
+    # Find the tallest feature
+    half_feature = max(half_exon, half_motif)
+
+    # Compute height needed for one gene row
+    row_height = int(label_space + (2 * half_feature) + (2 * pad_y))
+
+    # Compute full image height
+    height = top_margin + len(records) * row_height + bottom_margin
+
+    # Create blank PNG surface
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+
+    # Create drawing context
     cr = cairo.Context(surface)
 
-    # white background
+    # Set background color to white
     cr.set_source_rgb(1, 1, 1)
+
+    # Paint entire background
     cr.paint()
 
-    # font
-    cr.set_source_rgb(0, 0, 0)
+    # Choose font family
     cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+
+    # Set font size
     cr.set_font_size(16)
 
-
-    # Define motif colors
+    # Define colors for motifs
     palette = [
-        (0.00, 0.80, 1.00),  # Neon Blue 
+        (0.00, 0.80, 1.00),  # Neon Blue
         (0.00, 1.00, 0.40),  # Neon Green
         (1.00, 0.55, 0.00),  # Neon Orange
-        (1.00, 0.10, 0.70),  # Neon Pink 
+        (1.00, 0.10, 0.70),  # Neon Pink
     ]
 
-
-    # Map motif string -> color
+    # Create dictionary mapping motif to color
     motif_to_color = {}
+
+    # Assign each motif a color
     for i, motif in enumerate(motifs):
         motif_to_color[motif.upper()] = palette[i % len(palette)]
 
-
-    # Draw each gene track
-
+    # Loop over each gene
     for idx, rec in enumerate(records):
 
-        y_top = top_margin + idx * track_gap
-        baseline_y = y_top + baseline_offset
+        # Compute top y position for this gene
+        y_top = top_margin + idx * row_height
 
-        # label (gene name only)
-        if rec.header.startswith(">"):
-            gene_name = rec.header    
-            
+        # Compute baseline y position
+        baseline_y = y_top + label_space + half_feature + pad_y
+
+        # Get gene header
+        gene_name = rec.header
+
+        # Remove leading > if present
+        if gene_name.startswith(">"):
+            gene_name = gene_name[1:]
+
+        # Set color for text
         cr.set_source_rgb(0, 0, 0)
-        cr.move_to(20, baseline_y - 75)
+
+        # Move pen to label position
+        cr.move_to(20, baseline_y - half_feature - 15)
+
+        # Draw gene name
         cr.show_text(gene_name)
 
-        # baseline (introns)
+        # Set line thickness
         cr.set_line_width(line_width)
+
+        # Set line color to black
         cr.set_source_rgb(0, 0, 0)
+
+        # Move pen to start of baseline
         cr.move_to(x(0), baseline_y)
+
+        # Draw baseline to end of gene
         cr.line_to(x(rec.length), baseline_y)
+
+        # Render baseline
         cr.stroke()
 
-        # exons (boxes)
+        # Loop through exon/intron segments
         for seg in rec.segments:
+
+            # Skip introns
             if seg.kind != "exon":
                 continue
 
+            # Convert exon start to x pixel
             x0 = x(seg.start)
+
+            # Convert exon end to x pixel
             x1 = x(seg.end)
+
+            # Compute exon width
             w = x1 - x0
+
+            # Ensure minimum width
             if w < 1:
                 w = 1
 
+            # Set color to black
             cr.set_source_rgb(0, 0, 0)
+
+            # Draw exon rectangle
             cr.rectangle(x0, baseline_y - exon_height / 2, w, exon_height)
+
+            # Fill exon box
             cr.fill()
 
-        
-        # motifs 
-    
+        # Compute vertical position of motifs
         motif_y = baseline_y - motif_height / 2
 
+        # Loop through each motif
         for motif in motifs:
+
+            # Convert motif to uppercase
             motif_up = motif.upper()
+
+            # Get motif color
             color = motif_to_color[motif_up]
 
-            # find all hits of this motif in this gene
+            # Find all matches in this gene
             hits = find_motif_positions(rec, motif_up)
 
-            # draw each hit as a colored rectangle
+            # Draw each motif hit
             for start, end in hits:
+
+                # Convert start position to x pixel
                 x0 = x(start)
+
+                # Convert end position to x pixel
                 x1 = x(end)
+
+                # Compute width in pixels
                 w = x1 - x0
+
+                # Ensure minimum width
                 if w < 1:
                     w = 1
 
-                cr.set_source_rgb(*color)
+                # Set color with transparency
+                cr.set_source_rgba(color[0], color[1], color[2], motif_alpha)
 
+                # Draw motif rectangle
                 cr.rectangle(x0, motif_y, w, motif_height)
+
+                # Fill motif box
                 cr.fill()
 
-            
-
-
-
-    # Save PNG
-
+    # Save final image to file
     surface.write_to_png(out_png)
 
 

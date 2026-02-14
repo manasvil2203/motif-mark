@@ -209,3 +209,173 @@ def find_motif_positions(record: SequenceRecord, motif: str) -> list[tuple[int, 
     return positions
 
 
+# Now here comes the drawing part
+import cairo
+
+
+def draw_gene_bases(records: list[SequenceRecord], motifs: list[str], out_png: str) -> None:
+    """
+    Draw a multi-track figure sized to the number of genes.
+    For each gene:
+      - draw label
+      - draw baseline (introns)
+      - draw exons as black boxes
+      - draw motif hits as colored boxes (all on the same line on baseline)
+    """
+
+    # 1) Layout constants (pixels)
+
+    width = 1400
+    left_margin = 220
+    right_margin = 40
+    top_margin = 50
+    bottom_margin = 40
+
+    track_gap = 200         # spacing between gene tracks
+    baseline_offset = 55    # baseline position within each track row
+
+    line_width = 2
+    exon_height = 60
+
+    motif_height = 60       # thickness of motif boxes
+    motif_y_gap = 0         # how far above the baseline motifs are drawn
+
+
+    # Compute image height
+
+    height = top_margin + len(records) * track_gap + bottom_margin
+
+
+    # Shared x-scale (bp -> pixels)
+
+    max_len = max(r.length for r in records)
+    usable_w = width - left_margin - right_margin
+    scale = usable_w / max_len
+
+    def x(bp: int) -> float:
+        return left_margin + bp * scale
+
+    # Create surface/context
+
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    cr = cairo.Context(surface)
+
+    # white background
+    cr.set_source_rgb(1, 1, 1)
+    cr.paint()
+
+    # font
+    cr.set_source_rgb(0, 0, 0)
+    cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+    cr.set_font_size(16)
+
+
+    # Define motif colors
+    palette = [
+        (0.00, 0.80, 1.00),  # Neon Blue 
+        (0.00, 1.00, 0.40),  # Neon Green
+        (1.00, 0.55, 0.00),  # Neon Orange
+        (1.00, 0.10, 0.70),  # Neon Pink 
+    ]
+
+
+    # Map motif string -> color
+    motif_to_color = {}
+    for i, motif in enumerate(motifs):
+        motif_to_color[motif.upper()] = palette[i % len(palette)]
+
+
+    # Draw each gene track
+
+    for idx, rec in enumerate(records):
+
+        y_top = top_margin + idx * track_gap
+        baseline_y = y_top + baseline_offset
+
+        # label (gene name only)
+        if rec.header.startswith(">"):
+            gene_name = rec.header    
+            
+        cr.set_source_rgb(0, 0, 0)
+        cr.move_to(20, baseline_y - 75)
+        cr.show_text(gene_name)
+
+        # baseline (introns)
+        cr.set_line_width(line_width)
+        cr.set_source_rgb(0, 0, 0)
+        cr.move_to(x(0), baseline_y)
+        cr.line_to(x(rec.length), baseline_y)
+        cr.stroke()
+
+        # exons (boxes)
+        for seg in rec.segments:
+            if seg.kind != "exon":
+                continue
+
+            x0 = x(seg.start)
+            x1 = x(seg.end)
+            w = x1 - x0
+            if w < 1:
+                w = 1
+
+            cr.set_source_rgb(0, 0, 0)
+            cr.rectangle(x0, baseline_y - exon_height / 2, w, exon_height)
+            cr.fill()
+
+        
+        # motifs 
+    
+        motif_y = baseline_y - motif_height / 2
+
+        for motif in motifs:
+            motif_up = motif.upper()
+            color = motif_to_color[motif_up]
+
+            # find all hits of this motif in this gene
+            hits = find_motif_positions(rec, motif_up)
+
+            # draw each hit as a colored rectangle
+            for start, end in hits:
+                x0 = x(start)
+                x1 = x(end)
+                w = x1 - x0
+                if w < 1:
+                    w = 1
+
+                cr.set_source_rgb(*color)
+
+                cr.rectangle(x0, motif_y, w, motif_height)
+                cr.fill()
+
+            
+
+
+
+    # Save PNG
+
+    surface.write_to_png(out_png)
+
+
+
+def fasta_to_png_name(fasta_path: str) -> str:
+    """
+    Convert FASTA filename to PNG filename.
+    Example: Figure_1.fasta -> Figure_1.png
+    """
+    base = os.path.basename(fasta_path)
+    prefix, _ = os.path.splitext(base)
+    return f"{prefix}.png"
+
+
+def main():
+    args = get_args()
+    records = read_fasta(args.fasta)
+    motifs = read_motifs(args.motifs)
+
+    out_png = fasta_to_png_name(args.fasta)
+    draw_gene_bases(records, motifs, out_png)
+
+    print("Saved:", out_png)
+
+if __name__ == "__main__":
+    main()

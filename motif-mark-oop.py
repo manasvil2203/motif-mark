@@ -19,255 +19,340 @@ args = get_args()
 f: str = args.fasta
 m: str = args.motifs
 
-# Making a class called Segment
+# Create a class to represent a continuous exon or intron segment
 class Segment:
-    """ Represents one exon or intron region"""
+    """Represents one exon or intron region"""
 
-    # defining my constructor
-    def __init__(self, start: int, end: int, kind: str): 
-        # start positions
-        self.start = start 
-        #end position
-        self.end = end 
-        # is it a exon or intron
-        self.kind = kind 
-    # returns how long the segment is
-    def length(self) -> int:
-        return self.end - self.start 
+    # Constructor: runs when you create Segment(...)
+    def __init__(self, start, end, kind):
+
+        # Store the start coordinate
+        self.start = start
+
+        # Store the end coordinate (end-exclusive)
+        self.end = end
+
+        # Store whether this is exon or intron
+        self.kind = kind
+
+    # Function that returns the length of this segment
+    def length(self):
+
+        # Return end minus start
+        return self.end - self.start
 
 
+# Create a class that represents one FASTA record
 class SequenceRecord:
-    """ Represents one FATSA record with exon/intron segments"""
-    
-     #contructor
-    def __init__(self, header: str, sequence: str):
-        # stores the ehader of the entry
-        self.header = header
-        # stores the sequence of the entry
-        self.seq = sequence
-        # stores length once
-        self.length = len(sequence) 
+    """Represents one FASTA record with exon/intron segments"""
 
-        # List of Segment objects
+    # Constructor: runs when you create SequenceRecord(...)
+    def __init__(self, header, sequence):
+
+        # Save header line
+        self.header = header
+
+        # Save raw sequence string
+        self.seq = sequence
+
+        # Save sequence length
+        self.length = len(sequence)
+
+        # Create an empty list of segments for exon/intron blocks
         self.segments = []
 
-        # Build exon/intron blocks immediately
+        # Build exon/intron segments from uppercase/lowercase pattern
         self._build_segments()
-    
-    #function to split exons and introna
+
+    # Internal helper to split exon/intron regions based on case
     def _build_segments(self):
-        """Split sequence into exon/intron segments based on case. Uppercase = exon, lowercase = intron."""
-        # if it is uppercase
+
+        # If the first base is uppercase, we start in an exon
         if self.seq[0].isupper():
             current_type = "exon"
-        # if it is lowercase    
         else:
             current_type = "intron"
 
-        # initialize to zero
+        # Start of the current segment
         start = 0
 
-        # Scan sequence
+        # Loop through the sequence positions starting at index 1
         for i in range(1, len(self.seq)):
-            #if it is uppercase
+
+            # Decide what type this base is
             if self.seq[i].isupper():
                 base_type = "exon"
-            # if it is lowercase    
             else:
                 base_type = "intron"
 
-            # If type changes, close old segment
+            # If we changed from exon->intron or intron->exon
             if base_type != current_type:
-                # then assign record to class segment, store exon, intron info
+
+                # Create a Segment for the previous run
                 seg = Segment(start, i, current_type)
-                # Append continously to the list
+
+                # Add the segment to the segments list
                 self.segments.append(seg)
-                # Assign next record 
+
+                # Start a new segment at position i
                 start = i
-                # change current type
+
+                # Update current_type to the new type
                 current_type = base_type
 
-        # Add final segment
+        # After the loop, add the final segment
         final_seg = Segment(start, len(self.seq), current_type)
+
+        # Store that final segment too
         self.segments.append(final_seg)
 
 
-def read_fasta(path: str) -> list[SequenceRecord]:
-    """Read a FASTA file and return a list of SequenceRecord objects."""
-    # make empty list to store each record
+# Function to read a FASTA file and return SequenceRecord objects
+def read_fasta(path):
+
+    # Make an empty list to store records
     records = []
-    # Header has no value, so assign it None for now
+
+    # Store current header (None before we see one)
     header = None
-    # Empty list to stpre sequence lines
+
+    # Store sequence lines for the current record
     seq_lines = []
-    
-    # open file
+
+    # Open the FASTA file
     with open(path, "r") as fh:
 
+        # Loop through each line
         for line in fh:
-            # basically gets rid of new line character  
+
+            # Remove newline and spaces
             line = line.strip()
-            # If the line is a header
+
+            # Skip blank lines
+            if line == "":
+                continue
+
+            # If this is a header line
             if line.startswith(">"):
-                # If it is not the first one
+
+                # If we already have a header, finalize the previous record
                 if header is not None:
-                    #
+
+                    # Combine stored sequence lines into one string
                     sequence = "".join(seq_lines)
-                    # Also initialize class SequenceRecord within the record list and add each record in that class format
-                    records.append(SequenceRecord(header, sequence))
-                #assign header the next line
+
+                    # Create a SequenceRecord and append it
+                    rec = SequenceRecord(header, sequence)
+                    records.append(rec)
+
+                # Update header to this new header line
                 header = line
-                # Empty the list
+
+                # Reset sequence lines list
                 seq_lines = []
-            # if the line is a sequence
+
             else:
-                #add the sequnce to the list of seq lines
+                # Otherwise this is a sequence line, so store it
                 seq_lines.append(line)
 
-        # Add last record
+        # After loop ends, add the last record if header exists
         if header is not None:
-            sequence = "".join(seq_lines)
-            records.append(SequenceRecord(header, sequence))
 
+            # Combine last sequence
+            sequence = "".join(seq_lines)
+
+            # Create final SequenceRecord
+            rec = SequenceRecord(header, sequence)
+            records.append(rec)
+
+    # Return the list of SequenceRecord objects
     return records
 
-# function to read the list of motifs file
-def read_motifs(path: str) -> list[str]:
-    """Read a motifs text file (one motif per line) and return a list of motifs."""
-    # empty list to store the motifs
+
+# Function to read motifs file (one motif per line)
+def read_motifs(path):
+
+    # Make empty list for motifs
     motifs = []
-    
-    # Open the file
+
+    # Open motif file
     with open(path, "r") as fh:
-        # go through every line
+
+        # Loop through each line
         for line in fh:
-            #get rid of new line characters
+
+            # Strip newline
             line = line.strip()
-            # append each motif to our list
+
+            # Skip blank lines
+            if line == "":
+                continue
+
+            # Add motif to list
             motifs.append(line)
 
+    # Return list of motif strings
     return motifs
 
 
-# dictionary of IUPAC ambiguous letters
+# Dictionary for IUPAC ambiguity codes
 IUPAC = {
-    "A": {"A"},
-    "C": {"C"},
-    "G": {"G"},
-    "T": {"T"},
-    "U": {"T"},  # treat U as T
-    "Y": {"C", "T"},
+    "A": ["A"],
+    "C": ["C"],
+    "G": ["G"],
+    "T": ["T"],
+    "U": ["T"],
+    "Y": ["C", "T"],
 }
 
-# function to match motif charcters in FASTA files to the ambigous IUPAC charcters
-def chars_compatible(m_char: str, s_char: str) -> bool:
-    """
-    Return True if motif character and sequence character are compatible
-    under IUPAC ambiguity rules.
-    """
-    # Make them uniform by turning both into uppcase
+
+# Function to see if a motif character can match a sequence character
+def chars_compatible(m_char, s_char):
+
+    # Convert motif char to uppercase
     m_char = m_char.upper()
+
+    # Convert sequence char to uppercase
     s_char = s_char.upper()
-    
-   # If they are not present in my dictionbary return false
-    if m_char not in IUPAC or s_char not in IUPAC:
+
+    # If motif char not in dictionary, fail
+    if m_char not in IUPAC:
         return False
-    
-    # else return the intersection
-    return len(IUPAC[m_char].intersection(IUPAC[s_char])) > 0
+
+    # If sequence char not in dictionary, fail
+    if s_char not in IUPAC:
+        return False
+
+    # Loop through all bases motif char could represent
+    for base in IUPAC[m_char]:
+
+        # If that base is also allowed by the sequence char, match is possible
+        if base in IUPAC[s_char]:
+            return True
+
+    # If none matched, return False
+    return False
 
 
-# function for motif matching!!
-def find_motif_positions(record: SequenceRecord, motif: str) -> list[tuple[int, int]]:
-    """
-    Find all positions where a motif matches a sequence.
-    Returns a list of (start, end) tuples (0-based).
-    """
-    # Make them upper case to keep it uniform
+# Function to find motif matches in a SequenceRecord
+def find_motif_positions(record, motif):
+
+    # Convert full sequence to uppercase
     seq = record.seq.upper()
+
+    # Convert motif to uppercase
     motif = motif.upper()
-    
-    # Initialize empty list
+
+    # Make empty list for hits
     positions = []
-    # variable for the length of the motif
+
+    # Motif length
     k = len(motif)
 
-    # slide motif along the sequence
+    # Loop over every possible start position
     for i in range(0, len(seq) - k + 1):
 
+        # Assume match until proven otherwise
         match = True
 
-        # compare motif to sequence at this position
-        for j in range(k):
-            if not chars_compatible(motif[j], seq[i + j]):
+        # Compare each character of the motif
+        for j in range(0, k):
+
+            # Check if motif char and sequence char are compatible
+            ok = chars_compatible(motif[j], seq[i + j])
+
+            # If not compatible, break
+            if ok is False:
                 match = False
                 break
 
-        if match:
+        # If still match is True, store this hit
+        if match is True:
             positions.append((i, i + k))
-        
+
+    # Return list of hit coordinates
     return positions
 
 
-# Now here comes the drawing part
-import cairo
+# Convert FASTA filename to PNG name
+def fasta_to_png_name(fasta_path):
+
+    # Get base file name (no directories)
+    base = os.path.basename(fasta_path)
+
+    # Split name from extension
+    prefix, ext = os.path.splitext(base)
+
+    # Return new name with .png
+    return prefix + ".png"
 
 
-def draw_gene_bases(records: list[SequenceRecord], motifs: list[str], out_png: str) -> None:
-    """
-    Draw genes with introns, exons, and motifs in one PNG.
-    Spacing is computed automatically per gene.
-    Motifs are semi-transparent so overlaps are visible.
-    """
+# Draw genes, motifs, and overlap lanes
+def draw_gene_bases(records, motifs, out_png):
 
-    # Set total image width in pixels
+    # Width of the image
     width = 1400
 
-    # Space on the left for gene labels
+    # Left margin for labels
     left_margin = 220
 
-    # Space on the right so lines don't touch edge
+    # Right margin for spacing
     right_margin = 40
 
-    # Padding at the top of the image
+    # Top margin
     top_margin = 50
 
-    # Padding at the bottom of the image
+    # Bottom margin
     bottom_margin = 40
 
-    # Thickness of baseline line
+    # Baseline thickness
     line_width = 2
 
-    # Height of exon rectangles
+    # Exon rectangle height
     exon_height = 60
 
-    # Height of motif rectangles
+    # Main motif rectangle height
     motif_height = 60
 
-    # Vertical padding above and below each gene
+    # Padding above/below features
     pad_y = 10
 
-    # Space reserved for gene name text
+    # Space reserved for the label region
     label_space = 30
 
-    # Transparency for motifs (0 = invisible, 1 = solid)
-    motif_alpha = 0.60
+    # Motif transparency
+    motif_alpha = 0.70
 
-    # Stop if no records were given
-    if not records:
+    # Lane bar height
+    lane_height = 6
+
+    # Lane gap (big gap)
+    lane_gap = 10
+
+    # Gap between gene and overlap strip
+    strip_top_gap = 25
+
+    # Extra strip padding at the bottom
+    strip_bottom_pad = 10
+
+    # If records is empty, stop
+    if len(records) == 0:
         raise ValueError("No records to draw")
 
-    # Find longest gene in bases
-    max_len = max(r.length for r in records)
+    # Find the maximum gene length
+    max_len = 0
+    for r in records:
+        if r.length > max_len:
+            max_len = r.length
 
-    # Compute horizontal drawing space
+    # Compute usable width
     usable_w = width - left_margin - right_margin
 
-    # Convert base pairs to pixels
+    # Compute scale
     scale = usable_w / max_len
 
-    # Convert base position to x coordinate
-    def x(bp: int) -> float:
+    # Convert bp position to x coordinate
+    def x(bp):
         return left_margin + bp * scale
 
     # Compute half exon height
@@ -276,181 +361,305 @@ def draw_gene_bases(records: list[SequenceRecord], motifs: list[str], out_png: s
     # Compute half motif height
     half_motif = motif_height / 2
 
-    # Find the tallest feature
-    half_feature = max(half_exon, half_motif)
+    # Compute half feature height
+    if half_exon > half_motif:
+        half_feature = half_exon
+    else:
+        half_feature = half_motif
 
-    # Compute height needed for one gene row
-    row_height = int(label_space + (2 * half_feature) + (2 * pad_y))
-
-    # Compute full image height
-    height = top_margin + len(records) * row_height + bottom_margin
-
-    # Create blank PNG surface
-    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
-
-    # Create drawing context
-    cr = cairo.Context(surface)
-
-    # Set background color to white
-    cr.set_source_rgb(1, 1, 1)
-
-    # Paint entire background
-    cr.paint()
-
-    # Choose font family
-    cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-
-    # Set font size
-    cr.set_font_size(16)
-
-    # Define colors for motifs
+    # Create palette colors
     palette = [
-        (0.00, 0.80, 1.00),  # Neon Blue
-        (0.00, 1.00, 0.40),  # Neon Green
-        (1.00, 0.55, 0.00),  # Neon Orange
-        (1.00, 0.10, 0.70),  # Neon Pink
+        (0.00, 0.80, 1.00),
+        (0.00, 1.00, 0.40),
+        (1.00, 0.55, 0.00),
+        (1.00, 0.10, 0.70),
     ]
 
-    # Create dictionary mapping motif to color
+    # Build motif to color mapping
     motif_to_color = {}
 
-    # Assign each motif a color
-    for i, motif in enumerate(motifs):
-        motif_to_color[motif.upper()] = palette[i % len(palette)]
+    # Loop over motif list
+    i = 0
+    while i < len(motifs):
 
-    # Loop over each gene
-    for idx, rec in enumerate(records):
+        # Get motif
+        motif = motifs[i]
 
-        # Compute top y position for this gene
-        y_top = top_margin + idx * row_height
+        # Uppercase motif
+        motif_up = motif.upper()
 
-        # Compute baseline y position
-        baseline_y = y_top + label_space + half_feature + pad_y
+        # Pick color index
+        color_index = i % len(palette)
 
-        # Get gene header
-        gene_name = rec.header
+        # Store mapping
+        motif_to_color[motif_up] = palette[color_index]
 
-        # Remove leading > if present
-        if gene_name.startswith(">"):
-            gene_name = gene_name[1:]
+        # Increment
+        i += 1
 
-        # Set color for text
-        cr.set_source_rgb(0, 0, 0)
+    # Define helper to assign bars to lanes
+    def assign_lanes(bars):
 
-        # Move pen to label position
-        cr.move_to(20, baseline_y - half_feature - 15)
+        # Sort bars by start then end
+        bars_sorted = sorted(bars, key=lambda t: (t[0], t[1]))
 
-        # Draw gene name
-        cr.show_text(gene_name)
+        # Store lanes
+        lanes = []
 
-        # Set line thickness
-        cr.set_line_width(line_width)
+        # Store last end for each lane
+        lane_last_end = []
 
-        # Set line color to black
-        cr.set_source_rgb(0, 0, 0)
+        # Loop over bars
+        for bar in bars_sorted:
 
-        # Move pen to start of baseline
-        cr.move_to(x(0), baseline_y)
+            # Unpack bar
+            start = bar[0]
+            end = bar[1]
+            color = bar[2]
 
-        # Draw baseline to end of gene
-        cr.line_to(x(rec.length), baseline_y)
+            # Track if placed
+            placed = False
 
-        # Render baseline
-        cr.stroke()
+            # Try each lane
+            lane_index = 0
+            while lane_index < len(lanes):
 
-        # Loop through exon/intron segments
-        for seg in rec.segments:
+                # If it doesn't overlap the last one in this lane
+                if start >= lane_last_end[lane_index]:
 
-            # Skip introns
-            if seg.kind != "exon":
-                continue
+                    # Add to this lane
+                    lanes[lane_index].append((start, end, color))
 
-            # Convert exon start to x pixel
-            x0 = x(seg.start)
+                    # Update last end
+                    lane_last_end[lane_index] = end
 
-            # Convert exon end to x pixel
-            x1 = x(seg.end)
+                    # Mark as placed
+                    placed = True
 
-            # Compute exon width
-            w = x1 - x0
+                    # Stop searching lanes
+                    break
 
-            # Ensure minimum width
-            if w < 1:
-                w = 1
+                # Otherwise try next lane
+                lane_index += 1
 
-            # Set color to black
-            cr.set_source_rgb(0, 0, 0)
+            # If not placed, create a new lane
+            if placed is False:
+                lanes.append([(start, end, color)])
+                lane_last_end.append(end)
 
-            # Draw exon rectangle
-            cr.rectangle(x0, baseline_y - exon_height / 2, w, exon_height)
+        # Return lanes
+        return lanes
 
-            # Fill exon box
-            cr.fill()
+    # Precompute lanes for each gene
+    per_gene_lanes = []
 
-        # Compute vertical position of motifs
-        motif_y = baseline_y - motif_height / 2
+    # Loop over each record
+    for rec in records:
 
-        # Loop through each motif
+        # Store bars for this gene
+        bars = []
+
+        # Loop over each motif
         for motif in motifs:
 
-            # Convert motif to uppercase
+            # Uppercase motif
             motif_up = motif.upper()
 
             # Get motif color
             color = motif_to_color[motif_up]
 
-            # Find all matches in this gene
+            # Find hits
             hits = find_motif_positions(rec, motif_up)
 
-            # Draw each motif hit
+            # Loop over hits
+            for hit in hits:
+
+                # Get start
+                start = hit[0]
+
+                # Get end
+                end = hit[1]
+
+                # Append bar
+                bars.append((start, end, color))
+
+        # Assign lanes for this gene
+        lanes = assign_lanes(bars)
+
+        # Store lanes
+        per_gene_lanes.append(lanes)
+
+    # Find maximum lanes across genes
+    max_lanes = 0
+    for lanes in per_gene_lanes:
+        if len(lanes) > max_lanes:
+            max_lanes = len(lanes)
+
+    # Compute strip height
+    strip_height = 0
+    if max_lanes > 0:
+        strip_height = (max_lanes * lane_height) + ((max_lanes - 1) * lane_gap)
+
+    # Compute row height
+    row_height = int(
+        label_space +
+        (2 * half_feature) +
+        (2 * pad_y) +
+        strip_top_gap +
+        strip_height +
+        strip_bottom_pad
+    )
+
+    # Compute full image height
+    height = top_margin + (len(records) * row_height) + bottom_margin
+
+    # Create cairo surface
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+
+    # Create cairo context
+    cr = cairo.Context(surface)
+
+    # Set background color white
+    cr.set_source_rgb(1, 1, 1)
+
+    # Paint background
+    cr.paint()
+
+    # Set font
+    cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+
+    # Set font size
+    cr.set_font_size(16)
+
+    # Loop over genes for drawing
+    idx = 0
+    while idx < len(records):
+
+        # Get this record
+        rec = records[idx]
+
+        # Compute y top
+        y_top = top_margin + idx * row_height
+
+        # Compute baseline y
+        baseline_y = y_top + label_space + half_feature + pad_y
+
+        # Get header
+        gene_name = rec.header
+
+        # Remove >
+        if gene_name.startswith(">"):
+            gene_name = gene_name[1:]
+
+        # Set text color
+        cr.set_source_rgb(0, 0, 0)
+
+        # Move to text position
+        cr.move_to(20, baseline_y - half_feature - 15)
+
+        # Draw text
+        cr.show_text(gene_name)
+
+        # Set line width
+        cr.set_line_width(line_width)
+
+        # Set black for baseline
+        cr.set_source_rgb(0, 0, 0)
+
+        # Draw baseline
+        cr.move_to(x(0), baseline_y)
+        cr.line_to(x(rec.length), baseline_y)
+        cr.stroke()
+
+        # Draw exons
+        for seg in rec.segments:
+            if seg.kind != "exon":
+                continue
+
+            x0 = x(seg.start)
+            x1 = x(seg.end)
+            w = x1 - x0
+            if w < 1:
+                w = 1
+
+            cr.set_source_rgb(0, 0, 0)
+            cr.rectangle(x0, baseline_y - exon_height / 2, w, exon_height)
+            cr.fill()
+
+        # Draw motifs on main track
+        motif_y_main = baseline_y - motif_height / 2
+
+        for motif in motifs:
+            motif_up = motif.upper()
+            color = motif_to_color[motif_up]
+            hits = find_motif_positions(rec, motif_up)
+
             for start, end in hits:
-
-                # Convert start position to x pixel
                 x0 = x(start)
-
-                # Convert end position to x pixel
                 x1 = x(end)
-
-                # Compute width in pixels
                 w = x1 - x0
-
-                # Ensure minimum width
                 if w < 1:
                     w = 1
 
-                # Set color with transparency
                 cr.set_source_rgba(color[0], color[1], color[2], motif_alpha)
-
-                # Draw motif rectangle
-                cr.rectangle(x0, motif_y, w, motif_height)
-
-                # Fill motif box
+                cr.rectangle(x0, motif_y_main, w, motif_height)
                 cr.fill()
 
-    # Save final image to file
+        # Compute overlap strip start
+        strip_y0 = baseline_y + half_feature + strip_top_gap
+
+        # Get lanes for this gene
+        lanes = per_gene_lanes[idx]
+
+        # Draw lanes
+        li = 0
+        while li < len(lanes):
+
+            lane = lanes[li]
+
+            lane_y = strip_y0 + li * (lane_height + lane_gap)
+
+            for start, end, color in lane:
+                x0 = x(start)
+                x1 = x(end)
+                w = x1 - x0
+                if w < 1:
+                    w = 1
+
+                cr.set_source_rgb(color[0], color[1], color[2])
+                cr.rectangle(x0, lane_y, w, lane_height)
+                cr.fill()
+
+            li += 1
+
+        idx += 1
+
+    # Save PNG
     surface.write_to_png(out_png)
 
 
-
-def fasta_to_png_name(fasta_path: str) -> str:
-    """
-    Convert FASTA filename to PNG filename.
-    Example: Figure_1.fasta -> Figure_1.png
-    """
-    base = os.path.basename(fasta_path)
-    prefix, _ = os.path.splitext(base)
-    return f"{prefix}.png"
-
-
+# Main function
 def main():
+
+    # Parse arguments
     args = get_args()
+
+    # Read FASTA records
     records = read_fasta(args.fasta)
+
+    # Read motifs
     motifs = read_motifs(args.motifs)
 
+    # Make output filename
     out_png = fasta_to_png_name(args.fasta)
+
+    # Draw figure
     draw_gene_bases(records, motifs, out_png)
 
+    # Print success
     print("Saved:", out_png)
 
+
+# Run main if script executed directly
 if __name__ == "__main__":
     main()

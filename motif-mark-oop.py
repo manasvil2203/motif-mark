@@ -19,7 +19,7 @@ def get_args():
     # Create an ArgumentParser object
     parser = argparse.ArgumentParser(description="Visualize sequence motifs on genomic regions using pycairo")
     # Add FASTA file argument
-    parser.add_argument(    "-f",   "--fasta", help="Input fasta containing sequences", required=True)
+    parser.add_argument("-f",   "--fasta", help="Input fasta containing sequences", required=True)
     # Add motifs file argument
     parser.add_argument("-m", "--motifs",help="Input text file containing motifs (one per line)",required=True)
 
@@ -55,7 +55,7 @@ class SequenceRecord:
     """Represents one FASTA record with exon/intron segments"""
 
     # Constructor: runs when you create SequenceRecord(...)
-    def __init__(self, header, sequence):
+    def __init__(self, header, sequence): 
 
         # Save header line
         self.header = header
@@ -115,7 +115,7 @@ class SequenceRecord:
         self.segments.append(final_seg)
 
 
-# New class: one motif match at one location in one gene
+# One motif match at one location in one gene
 class MotifLocation:
     """Represents one motif match on one gene (start/end) with a color."""
 
@@ -161,10 +161,6 @@ def read_fasta(path):
 
             # Remove newline and spaces
             line = line.strip()
-
-            # Skip blank lines
-            if line == "":
-                continue
 
             # If this is a header line
             if line.startswith(">"):
@@ -325,10 +321,10 @@ def draw_gene_bases(records, motifs, out_png):
     top_margin = 50
 
     # Bottom margin
-    bottom_margin = 40
+    bottom_margin = 30
 
     # Baseline thickness
-    line_width = 2
+    line_width = 5
 
     # Exon rectangle height
     exon_height = 60
@@ -337,29 +333,22 @@ def draw_gene_bases(records, motifs, out_png):
     motif_height = 60
 
     # Padding above/below features
-    pad_y = 10
+    pad_y = 5
 
     # Space reserved for the label region
     label_space = 30
 
     # Motif transparency
-    motif_alpha = 0.90
+    motif_alpha = 1.00
 
     # Lane bar height
-    lane_height = 6
+    lane_height = 2
 
     # Lane gap (big gap)
-    lane_gap = 10
+    lane_gap = 2
 
     # Gap between gene and overlap strip
-    strip_top_gap = 25
-
-    # Extra strip padding at the bottom
-    strip_bottom_pad = 10
-
-    # If records is empty, stop
-    if len(records) == 0:
-        raise ValueError("No records to draw")
+    strip_top_gap = 5
 
     # Find the maximum gene length
     max_len = 0
@@ -521,8 +510,7 @@ def draw_gene_bases(records, motifs, out_png):
         (2 * half_feature) +
         (2 * pad_y) +
         strip_top_gap +
-        strip_height +
-        strip_bottom_pad
+        strip_height 
     )
 
     # Compute full image height

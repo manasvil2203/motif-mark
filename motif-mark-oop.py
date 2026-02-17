@@ -408,11 +408,17 @@ def draw_gene_bases(records, motifs, out_png):
         # Increment
         i += 1
 
+    # Define a function to sort hits by start
+    def get_hit_key(hit):
+
+        # Return a tuple with start first, then end
+        return (hit.start, hit.end)    
+
     # Define helper to assign hits to lanes so overlaps don't share a lane
     def assign_lanes(hits):
 
         # Sort hits by start then end
-        hits_sorted = sorted(hits, key=lambda h: (h.start, h.end))
+        hits_sorted = sorted(hits, key=get_hit_key)
 
         # Store lanes
         lanes = []

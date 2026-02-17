@@ -214,10 +214,6 @@ def read_motifs(path):
             # Strip newline
             line = line.strip()
 
-            # Skip blank lines
-            if line == "":
-                continue
-
             # Add motif to list
             motifs.append(line)
 
@@ -250,10 +246,6 @@ def motif_to_regex(motif):
         # If the char is known, add its regex
         if ch in IUPAC_REGEX:
             pattern = pattern + IUPAC_REGEX[ch]
-
-        # If unknown, fail loudly (or you can return None)
-        else:
-            raise ValueError("Unsupported IUPAC code in motif: " + ch)
 
     # Return finished regex pattern
     return pattern

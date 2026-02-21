@@ -342,6 +342,18 @@ def draw_gene_bases(records, motifs, out_png):
     # Gap between gene and overlap strip
     strip_top_gap = 5
 
+    # Space reserved at the bottom for the legend
+    legend_space = 150
+
+    # Legend left starting x position
+    legend_x = 20
+
+    # Legend square size
+    legend_box = 18
+
+    # Space between legend items (vertically)
+    legend_gap = 10
+
     # Find the maximum gene length
     max_len = 0
     for r in records:
@@ -512,7 +524,7 @@ def draw_gene_bases(records, motifs, out_png):
     )
 
     # Compute full image height
-    height = top_margin + (len(records) * row_height) + bottom_margin
+    height = top_margin + (len(records) * row_height) + bottom_margin + legend_space
 
     # Create cairo surface
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
@@ -635,6 +647,53 @@ def draw_gene_bases(records, motifs, out_png):
             li += 1
 
         idx += 1
+
+
+    # Compute where legend starts (near bottom)
+    legend_y = height - legend_space + 30
+
+    # Set text color to black
+    cr.set_source_rgb(0, 0, 0)
+
+    # Set font size for legend title
+    cr.set_font_size(18)
+
+    # Draw legend title
+    cr.move_to(legend_x, legend_y - 15)
+    cr.show_text("Motifs (legend)")
+
+    # Set smaller font for motif names
+    cr.set_font_size(16)
+
+    # Track y position for each legend item
+    y_cursor = legend_y
+
+    # Loop over motifs in the same order as your motif list
+    for motif in motifs:
+
+        # Convert motif to uppercase (so it matches dictionary keys)
+        motif_up = motif.upper()
+
+        # Get the color for this motif
+        color = motif_to_color[motif_up]
+
+        # Draw the colored square
+        cr.set_source_rgb(color[0], color[1], color[2])
+        cr.rectangle(legend_x, y_cursor, legend_box, legend_box)
+        cr.fill()
+
+        # Draw black outline around the square
+        cr.set_source_rgb(0, 0, 0)
+        cr.set_line_width(1)
+        cr.rectangle(legend_x, y_cursor, legend_box, legend_box)
+        cr.stroke()
+
+        # Draw motif text next to the square
+        cr.move_to(legend_x + legend_box + 12, y_cursor + legend_box - 3)
+        cr.show_text(motif_up)
+
+        # Move down for next legend item
+        y_cursor = y_cursor + legend_box + legend_gap
 
     # Save PNG
     surface.write_to_png(out_png)

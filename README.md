@@ -24,7 +24,7 @@ Contains gene sequences.
 
 **Rules:**
 
-- > starts a new gene
+- ">" starts a new gene (new header, new gene)
 
 - Uppercase = exon
 
